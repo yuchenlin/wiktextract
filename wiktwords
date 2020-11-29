@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # Main program for extracting a dictionary from wiktionary.  This has
 # mostly been used with enwiktionary, but should be usable with other
@@ -9,12 +9,17 @@
 import os
 import re
 import sys
+import html
 import json
 import hashlib
 import argparse
 import collections
+from wikitextprocessor import Wtp, ALL_LANGUAGES
 from wiktextract import (WiktionaryConfig, parse_wiktionary,
-                         wiktionary_languages, parse_page)
+                         reprocess_wiktionary, parse_page)
+
+# Compute set of all language names
+all_langs = set(x["name"] for x in ALL_LANGUAGES)
 
 # Pages whose titles have any of these prefixes are ignored.
 ignore_prefixes = set(["Index", "Help", "MediaWiki", "Citations",
@@ -29,15 +34,17 @@ recognized_prefixes = set(["Category", "Appendix", "Wiktionary",
                            "Thesaurus", "Module", "Template"])
 
 
-def capture_page(title, text, pages_dir):
+def capture_page(model, orig_title, text, pages_dir):
     """Checks if the page needs special handling (and maybe saving).
     Returns True if the page should be processed normally as a
     dictionary entry."""
-    assert isinstance(title, str)
+    assert isinstance(model, str)
+    assert isinstance(orig_title, str)
     assert isinstance(text, str)
     assert pages_dir is None or isinstance(pages_dir, str)
 
     analyze = False
+    title = orig_title
     m = re.match(r"^([A-Z][a-z][-a-zA-Z0-9_]+):(.+)$", title)
     if not m:
         if len(title) > 100:
@@ -67,6 +74,8 @@ def capture_page(title, text, pages_dir):
         dirpath = os.path.dirname(path)
         os.makedirs(dirpath, exist_ok=True)
         with open(path, "w") as f:
+            f.write("TITLE: {}\n".format(orig_title))
+            text = html.unescape(text)
             f.write(text)
 
     return analyze
@@ -90,7 +99,7 @@ if __name__ == "__main__":
     parser.add_argument("--list-languages", action="store_true", default=False,
                         help="Print list of supported languages")
     parser.add_argument("--pages-dir", type=str, default=None,
-                        help="Directory under which to store all pages")
+                        help="Directory under which to save all pages")
     parser.add_argument("--all", action="store_true", default=False,
                         help="Capture all data for the selected languages")
     parser.add_argument("--translations", action="store_true", default=False,
@@ -109,10 +118,17 @@ if __name__ == "__main__":
                         help="Print statistics")
     parser.add_argument("--page", type=str,
                         help="Parse a single Wiktionary page (for debugging)")
-    parser.add_argument("--limit", type=int,
-                        help="Process at most this many pages (for debugging)")
+    parser.add_argument("--cache", type=str,
+                        help="File prefix where phase1 results are saved; "
+                        "speeds up processing a single page tremendously")
+    parser.add_argument("--num-threads", type=int, default=None,
+                        help="Number of parallel processes (default: #cpus)")
     parser.add_argument("--verbose", action="store_true", default=False,
                         help="Print verbose status messages (for debugging)")
+    parser.add_argument("--human-readable", action="store_true", default=False,
+                        help="Write output in human-readable JSON")
+    parser.add_argument("--override", type=str,
+                        help="Override module by one in file (for debugging)")
     args = parser.parse_args()
 
     # The --all option turns on capturing all data types
@@ -128,13 +144,14 @@ if __name__ == "__main__":
     # languages
     if args.list_languages:
         print("Supported languages:")
-        for lang in sorted(wiktionary_languages):
+        for lang in sorted(all_langs):
             print("    {}".format(lang))
         sys.exit(0)
 
-    if not args.path and not args.page:
-        print("The PATH argument for wiktionary dump file is mandatory")
-        print("(unless --page is specified).")
+    if not args.path and not args.cache:
+        print("The PATH argument for wiktionary dump file is normally "
+              "mandatory.")
+        print("Alternatively, --cache with --page can be used.")
         sys.exit(1)
 
     # Default to English and Translingual if language not specified.
@@ -142,7 +159,7 @@ if __name__ == "__main__":
         args.language = ["English", "Translingual"]
     else:
         for x in args.language:
-            if x not in wiktionary_languages:
+            if x not in all_langs:
                 print("Invalid language:", x)
                 sys.exit(1)
 
@@ -166,16 +183,36 @@ if __name__ == "__main__":
 
     word_count = 0
 
+    # Create expansion context
+    ctx = Wtp(cache_file=args.cache, num_threads=args.num_threads)
+    if args.override:
+        with open(args.override, "r") as f:
+            text = f.read()
+        m = re.match(r"(?s)^TITLE: ([^\n]*)\n", text)
+        if m:
+            title = m.group(1)
+            text = text[m.end():]
+        else:
+            print("First line of file supplied with --override must be "
+                  "\"TITLE: <page title>\"")
+            print("(The page title for this would normally start with Module:")
+            sys.exit(1)
+        # Load it as a transient page, overriding the normal page
+        ctx.add_page("Scribunto", title, text, transient=True)
+
     def word_cb(data):
         global word_count
         word_count += 1
-        out_f.write(json.dumps(data))
+        if args.human_readable:
+            out_f.write(json.dumps(data, indent=2, sort_keys=True))
+        else:
+            out_f.write(json.dumps(data))
         out_f.write("\n")
-        if not out_path or out_path == "-":
+        if not out_path or out_path == "-" or word_count % 1000 == 0:
             out_f.flush()
 
-    def capture_cb(title, text):
-        return capture_page(title, text, args.pages_dir)
+    def capture_cb(model, title, text):
+        return capture_page(model, title, text, args.pages_dir)
 
     config = WiktionaryConfig(capture_languages=args.language,
                               capture_translations=args.translations,
@@ -184,23 +221,35 @@ if __name__ == "__main__":
                               capture_compounds=args.compounds,
                               capture_redirects=args.redirects,
                               capture_examples=args.examples,
-                              limit=args.limit,
                               verbose=args.verbose)
 
     try:
+        if args.path:
+            # Parse the normal full Wiktionary data dump
+            parse_wiktionary(ctx, args.path, config, word_cb, capture_cb,
+                             phase1_only=(args.page is not None))
+
         if args.page:
             # Parse a single Wiktionary page (extracted using --pages-dir)
-            if args.path:
-                print("Normal input file should not be specified with --path")
-                sys.exit(1)
+            if not args.cache:
+                print("NOTE: you probably want to use --cache with --page or "
+                      "otherwise processing will be very slow.")
             with open(args.page, "r") as f:
                 text = f.read()
-            ret = parse_page("TESTPAGE", text, config)
+            m = re.match(r"(?s)^TITLE: ([^\n]*)\n", text)
+            if m:
+                title = m.group(1)
+                text = text[m.end():]
+            else:
+                title = "Test page"
+            ret = parse_page(ctx, title, text, config)
             for x in ret:
                 word_cb(x)
-        else:
-            # Parse the normal full Wiktionary data dump
-            parse_wiktionary(args.path, config, word_cb, capture_cb)
+
+        if not args.path and not args.page:
+            # Parse again from the cache file
+            reprocess_wiktionary(ctx, config, word_cb, capture_cb)
+
     finally:
         if out_path and out_path != "-":
             out_f.close()
@@ -241,14 +290,9 @@ if __name__ == "__main__":
     if args.errors:
         with open(args.errors, "w") as f:
             json.dump({
-                "errors": config.errors,
-                "warnings": config.warnings,
-                "debugs": config.debugs,
-                "unrecognized_counts": config.unrecognized_template_counts,
-                "unrecognized_samples": config.unrecognized_template_samples,
-                "unrendered_counts": config.unrendered_template_counts,
-                "unrendered_samples": config.unrendered_template_samples,
-                "unknown_value_counts": config.unknown_value_counts,
+                "errors": ctx.errors,
+                "warnings": ctx.warnings,
+                "debugs": ctx.debugs,
                 }, f)
 
     def dump_un(title, limit, counts, samples):
@@ -285,14 +329,3 @@ if __name__ == "__main__":
             print(title)
             for (k, kk), v in lst[:limit]:
                 print("  {:5d} {}: {}".format(v, k, kk))
-
-    dump_un("TOP 20 UNRECOGNIZED TEMPLATES", 20,
-            config.unrecognized_template_counts,
-            config.unrecognized_template_samples)
-
-    dump_un("TOP 20 UNRENDERED TEMPLATES", 20,
-            config.unrendered_template_counts,
-            config.unrendered_template_samples)
-
-    dump_val("TOP 20 UNKNOWN VALUES", 20,
-             config.unknown_value_counts)

@@ -18,6 +18,7 @@ unsupported_title_map = {
     "Colon hyphen right paren": ":-)",
     "Colon left paren": ":(",
     "Colon right paren": ":)",
+    "Colon slash": ":/",
     "Curly brackets": "{}",
     "Double colon": "::",
     "Double period": "..",
@@ -71,5 +72,15 @@ unsupported_title_map = {
     "s:a": "s:a",
     "st:a": "st:a",
     "v:a": "v:a",
+    "n:s": "n:s",
     "о slash dot": "o/.",
+    "hr number sign": "hr #",
+    "eq number sign": "eq #",
+    "Colon small p": ":p",
+    "Cifrão": "[Cifrão]",  # Should be dollar sign with two vertical lines
+    "Old Israeli shekel": "[Old Israeli shekel]",  # Should be the symbol
+    "Colon three": ":3",
+    "Amp": "&amp;",
+    "Colon lowercase thorn": ":þ",
+    "Colon left curly bracket": ":{",
 }

@@ -2,7 +2,24 @@
 
 This is a utility and Python package for for extracing data from Wiktionary.
 
-**New release expected in mid-March 2020 (delayed from mid-Feb)**
+**Currently working on this, and the repository may be broken on some
+  days.  I'm getting close to releasing 2.0.0 (probably first week of
+  December 2020, finally).**
+
+The current extracted version is available for browsing and download
+at: [https://kaikki.org/dictionary/](http://kaikki.org/dictionary/).
+(Beware, it is my development version, and may be broken on some days.
+It should stabilize when I release 2.0.0.)
+
+Note: extracting all data for all languages from English Wiktionary takes
+about 7 hours on a modern 24-core desktop.  You may want to download
+the pre-extracted data rather than run it yourself.  Or if you run it
+yourself, be prepared to wait from several hours to a couple of days.
+Expanding Lua macros is not cheap, but it enables superior extraction
+quality!
+
+**Documentation below needs to be updated; I plan to do that before
+  the 2.0.0 release.**
 
 ## Overview
 
@@ -51,7 +68,7 @@ The tool can be used to extract machine translation dictionaries,
 language understanding dictionaries, semantically annotated
 dictionaries, and morphological dictionaries with
 declension/conjugation information (where this information is
-available for the target language).  Dozens of languages have
+gavailable for the target language).  Dozens of languages have
 extensive vocabulary in ``enwiktionary``, and several thousand
 languages have partial coverage.
 
@@ -103,7 +120,7 @@ Wiktionary.  Just download the data dump file from
 run the script.  The correct dump file the name
 ``enwiktionary-<date>-pages-articles.xml.bz2``.
 
-The command-line tool may be invoced as follows:
+The command-line tool may be invoked as follows:
 
 ```
 wiktwords data/enwiktionary-latest-pages-articles.xml.bz2 --out wikt.words --language English --all
@@ -194,7 +211,7 @@ returns them for words in all languages.
 Some pages in Wiktionary are redirects.  For these, ``word_cb`` will
 be called with data in a special format.  In this case, the dictionary
 will have the key ``redirect``, which will contain the name of the
-word the entry redirects to.  The key ``word`` contains the word/term
+word the entry redirects to.  The key ``title`` contains the word/term
 that contains the redirect.  Redirect entries do not have ``pos`` or
 any of the other fields.  Redirects also are not associated with any
 language, so all redirects are always returned regardless of the captured
@@ -206,7 +223,7 @@ Information returned for each word is a dictionary.  The dictionary has the
 following keys (others may also be present or added later):
 
 * ``word``: the word form
-* pos: part-of-speech, such as "noun", "verb", "adj", "adv", "pron", "determiner", "prep" (preposition), "postp" (postposition), and many others.  The complete list of possibel values returned by the package can be found in ``wiktextract.PARTS_OF_SPEECH``.
+* pos: part-of-speech, such as "noun", "verb", "adj", "adv", "pron", "determiner", "prep" (preposition), "postp" (postposition), and many others.  The complete list of possible values returned by the package can be found in ``wiktextract.PARTS_OF_SPEECH``.
 * ``senses``: word senses for this word/part-of-speech (see below)
 * ``conjugation``: conjugation and declension entries found for the word, as dictionaries
 * ``heads``: part-of-speech specific head tags for the word.  Useful for, e.g., obtaining comparatives, superlatives, and other inflection information for many languages.  Each value is a dictionary, basically containing the arguments of the corresponding template in Wiktionary, with the template name under "template_name".
@@ -231,9 +248,9 @@ sense is a dictionary that may contain the following keys (among others, and mor
 
 * ``glosses``: list of gloss strings for the word sense (usually only one).  This has been cleaned, and should be straightforward text with no tagging.
 * ``nonglosses``: list of gloss-like strings but that are not traditional glossary entries describing the word's meaning
-* ``tags``: list of qualifiers and tags for the gloss.  This is a list of strings, and may include words such as "archaic", "colloquial", "present", "plural", "person", "organism", "british", "chemistry", "given name", "surname", "female", and many othes (new words may appear arbitrarily).  Some effort has been put into trying to canonicalize various sources and styles of annotation into a consistent set of tags, but it is impossible to do an exact job at this.
+* ``tags``: list of qualifiers and tags for the gloss.  This is a list of strings, and may include words such as "archaic", "colloquial", "present", "plural", "person", "organism", "british", "chemistry", "given name", "surname", "female", and many others (new words may appear arbitrarily).  Some effort has been put into trying to canonicalize various sources and styles of annotation into a consistent set of tags, but it is impossible to do an exact job at this.
 * ``senseid``: list of identifiers collected for the sense.  Some entries have a Wikidata identifier (Q<numbers>) here; others may have other identifiers.  Currently sense ids are not very widely annotated in Wiktionary.
-* ``wikipedia``: link to wikipedia page from the word sense/gloss
+* ``wikipedia``: link to Wikipedia page from the word sense/gloss
 * ``topics``: topic categories specified for the sense (these may also be in "tags")
 * ``taxon``: links to taxonomical data
 * ``categories``: Category links specified for the page
@@ -284,7 +301,7 @@ each dictionary has the following keys (and possibly others):
 ## Related packages
 
 The [wiktfinnish](https://github.com/tatuylonen/wiktfinnish) package
-can be used to interpret Finnish noun declications and verb
+can be used to interpret Finnish noun declinations and verb
 conjugations and for generating Finnish inflected word forms.
 
 ## Known issues
